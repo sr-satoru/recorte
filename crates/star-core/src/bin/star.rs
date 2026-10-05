@@ -18,7 +18,7 @@ struct Cli {
     json: bool,
 
     #[command(subcommand)]
-    command: Commands,
+    command: Option<Commands>,
 }
 
 #[derive(Subcommand)]
@@ -57,8 +57,14 @@ enum Commands {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
+    let command = cli.command.unwrap_or(Commands::Serve {
+        port: 4200,
+        config: None,
+        paths: None,
+        output_folder: None,
+    });
 
-    match cli.command {
+    match command {
         Commands::Detect { file } => {
             let dim = detect_dimensions(&file, cli.ffmpeg_root.as_deref()).await?;
             if cli.json {

@@ -28,6 +28,7 @@ ffprobe
 *.mkv
 *.mp4
 *.avi
+target
 
 # Sistema
 .DS_Store
