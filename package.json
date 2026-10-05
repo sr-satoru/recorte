@@ -1,28 +1,14 @@
 {
-  "name": "cropper",
-  "version": "1.0.4",
-  "main": "src/main.js",
-  "repository": "https://github.com/sr-satoru/recorte",
-  "author": "Matthew Knox",
-  "license": "MIT",
+  "name": "star",
+  "version": "1.0.6",
   "private": true,
   "scripts": {
-    "start": "node src/main.js serve",
-    "serve": "node src/main.js serve",
     "dev:ui": "npm --prefix frontend run dev",
     "build:ui": "npm --prefix frontend run build",
     "tauri": "tauri"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.12.1"
-  },
-  "dependencies": {
-    "commander": "^15.0.0",
-    "cron-parser": "^5.6.0",
-    "express": "^5.2.1",
-    "mv": "^2.1.1",
-    "sqlite3": "^6.0.1",
-    "tmp": "^0.2.7"
   },
   "type": "module"
 }
