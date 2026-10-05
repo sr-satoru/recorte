@@ -59,6 +59,7 @@ pub async fn ensure_app_ffmpeg() -> Result<PathBuf, String> {
     result.map(|_| bin_dir)
 }
 
+#[allow(dead_code)]
 async fn download_file(url: &str, dest: &Path) -> Result<(), String> {
     println!("[Star Engine] Baixando FFmpeg de: {}", url);
     DOWNLOAD_PROGRESS_BYTES.store(0, Ordering::SeqCst);
@@ -102,42 +103,46 @@ async fn download_file(url: &str, dest: &Path) -> Result<(), String> {
 }
 
 async fn download_and_install_ffmpeg(bin_dir: &Path) -> Result<(), String> {
-    fs::create_dir_all(bin_dir).map_err(|e| format!("Erro ao criar pasta bin do app: {}", e))?;
-
-    let temp_dir = tempfile::tempdir().map_err(|e| format!("Erro ao criar pasta temp: {}", e))?;
-
-    #[cfg(windows)]
-    {
-        let zip_url = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip";
-        let zip_path = temp_dir.path().join("ffmpeg.zip");
-
-        download_file(zip_url, &zip_path).await?;
-
-        println!("[Star Engine] Descompactando binários do Windows...");
-        extract_windows_zip(&zip_path, bin_dir)?;
-    }
-
-    #[cfg(target_os = "linux")]
-    {
-        let tar_url = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz";
-        let tar_path = temp_dir.path().join("ffmpeg.tar.xz");
-
-        download_file(tar_url, &tar_path).await?;
-
-        println!("[Star Engine] Descompactando binários do Linux...");
-        extract_linux_tar(&tar_path, temp_dir.path(), bin_dir).await?;
-    }
-
     #[cfg(target_os = "macos")]
     {
+        let _ = bin_dir;
         return Err("Instalação automática para macOS não configurada. Use homebrew: brew install ffmpeg".to_string());
     }
 
-    if is_app_ffmpeg_ready() {
-        println!("[Star Engine] FFmpeg e FFprobe prontos e isolados na pasta: {}", bin_dir.display());
-        Ok(())
-    } else {
-        Err("Os binários do FFmpeg não puderam ser verificados após a extração".to_string())
+    #[cfg(not(target_os = "macos"))]
+    {
+        fs::create_dir_all(bin_dir).map_err(|e| format!("Erro ao criar pasta bin do app: {}", e))?;
+
+        let temp_dir = tempfile::tempdir().map_err(|e| format!("Erro ao criar pasta temp: {}", e))?;
+
+        #[cfg(windows)]
+        {
+            let zip_url = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip";
+            let zip_path = temp_dir.path().join("ffmpeg.zip");
+
+            download_file(zip_url, &zip_path).await?;
+
+            println!("[Star Engine] Descompactando binários do Windows...");
+            extract_windows_zip(&zip_path, bin_dir)?;
+        }
+
+        #[cfg(target_os = "linux")]
+        {
+            let tar_url = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz";
+            let tar_path = temp_dir.path().join("ffmpeg.tar.xz");
+
+            download_file(tar_url, &tar_path).await?;
+
+            println!("[Star Engine] Descompactando binários do Linux...");
+            extract_linux_tar(&tar_path, temp_dir.path(), bin_dir).await?;
+        }
+
+        if is_app_ffmpeg_ready() {
+            println!("[Star Engine] FFmpeg e FFprobe prontos e isolados na pasta: {}", bin_dir.display());
+            Ok(())
+        } else {
+            Err("Os binários do FFmpeg não puderam ser verificados após a extração".to_string())
+        }
     }
 }
 

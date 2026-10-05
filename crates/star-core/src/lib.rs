@@ -12,7 +12,10 @@ pub use ffmpeg::{
 };
 pub use queue::{spawn_queue_worker, DetailedQueueResponse, QueueItemRecord, QueueManager};
 pub use server::{start_http_server, AppState};
-pub use system::{create_folder, list_directories, resolve_folder_candidate, resolve_video_path, scan_folder_for_videos};
+pub use system::{
+    create_folder, list_directories, resolve_folder_candidate, resolve_video_path,
+    scan_folder_for_videos, DirectoryListing, Shortcut,
+};
 
 pub struct EngineConfig {
     pub db_path: PathBuf,
