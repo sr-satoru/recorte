@@ -162,13 +162,13 @@ fn extract_windows_zip(zip_path: &Path, bin_dir: &Path) -> Result<(), String> {
             let dest = bin_dir.join("ffmpeg.exe");
             let _ = fs::remove_file(&dest);
             let mut outfile = File::create(&dest).map_err(|e| format!("Erro ao criar ffmpeg.exe: {}", e))?;
-            io::copy(&mut file, &mut outfile).map_err(|e| format!("Erro ao extrair ffmpeg.exe: {}", e))?;
+            std::io::copy(&mut file, &mut outfile).map_err(|e| format!("Erro ao extrair ffmpeg.exe: {}", e))?;
             found_ffmpeg = true;
         } else if name.ends_with("ffprobe.exe") {
             let dest = bin_dir.join("ffprobe.exe");
             let _ = fs::remove_file(&dest);
             let mut outfile = File::create(&dest).map_err(|e| format!("Erro ao criar ffprobe.exe: {}", e))?;
-            io::copy(&mut file, &mut outfile).map_err(|e| format!("Erro ao extrair ffprobe.exe: {}", e))?;
+            std::io::copy(&mut file, &mut outfile).map_err(|e| format!("Erro ao extrair ffprobe.exe: {}", e))?;
             found_ffprobe = true;
         }
     }
