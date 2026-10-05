@@ -28,6 +28,7 @@ export default function App() {
     activeItem: null,
     currentProgress: null
   });
+  const [videoFilter, setVideoFilter] = useState('all');
   const [isCancelling, setIsCancelling] = useState(false);
 
   // Playback state
@@ -135,6 +136,54 @@ export default function App() {
     const interval = setInterval(fetchServerStatus, 1500);
     return () => clearInterval(interval);
   }, [fetchServerStatus]);
+
+  // Synchronize server status for any video in preview list
+  const getVideoServerStatus = useCallback((v) => {
+    if (!v) return { status: 'pending', label: 'Pendente', className: 'status-tag' };
+    const vPath = v.path || v.name || '';
+    const vName = v.name || vPath.split(/[\/\\]/).pop() || '';
+
+    // Check if active
+    if (serverQueueData?.inProgress && serverQueueData.activeItem) {
+      const activePath = serverQueueData.activeItem;
+      const activeName = activePath.split(/[\/\\]/).pop() || '';
+      if (activePath === vPath || activeName === vName) {
+        const pct = serverQueueData.currentProgress?.percentage || 0;
+        return {
+          status: 'processing',
+          label: `⚡ Processando (${pct}%)`,
+          className: 'status-tag processing'
+        };
+      }
+    }
+
+    // Check in server queue history/items
+    if (serverQueueData?.items && Array.isArray(serverQueueData.items)) {
+      const found = serverQueueData.items.find(item => {
+        if (!item || !item.path) return false;
+        if (item.path === vPath) return true;
+        const itemName = item.path.split(/[\/\\]/).pop() || '';
+        return itemName === vName;
+      });
+
+      if (found) {
+        if (found.status === 'completed') {
+          return { status: 'completed', label: '✓ Concluído', className: 'status-tag completed' };
+        }
+        if (found.status === 'failed') {
+          return { status: 'failed', label: '✕ Falhou', className: 'status-tag failed' };
+        }
+        if (found.status === 'cancelled') {
+          return { status: 'cancelled', label: 'Cancelado', className: 'status-tag' };
+        }
+        if (found.status === 'pending') {
+          return { status: 'queued', label: 'Na Fila', className: 'status-tag' };
+        }
+      }
+    }
+
+    return { status: 'pending', label: v.status || 'Pendente', className: 'status-tag' };
+  }, [serverQueueData]);
 
   // Cancel currently running job
   const handleCancelActive = async () => {
@@ -1175,6 +1224,32 @@ export default function App() {
                 )}
               </div>
 
+              {videos.length > 0 && (
+                <div style={{ display: 'flex', gap: '6px', margin: '8px 0 12px 0', flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    className={`btn btn-xs ${videoFilter === 'all' ? 'btn-primary' : 'btn-secondary'}`}
+                    onClick={() => setVideoFilter('all')}
+                  >
+                    Todos ({videos.length})
+                  </button>
+                  <button
+                    type="button"
+                    className={`btn btn-xs ${videoFilter === 'pending' ? 'btn-primary' : 'btn-secondary'}`}
+                    onClick={() => setVideoFilter('pending')}
+                  >
+                    Pendentes ({videos.filter(v => getVideoServerStatus(v).status !== 'completed').length})
+                  </button>
+                  <button
+                    type="button"
+                    className={`btn btn-xs ${videoFilter === 'completed' ? 'btn-primary' : 'btn-secondary'}`}
+                    onClick={() => setVideoFilter('completed')}
+                  >
+                    ✓ Concluídos ({videos.filter(v => getVideoServerStatus(v).status === 'completed').length})
+                  </button>
+                </div>
+              )}
+
               {videos.length === 0 ? (
                 <div className="empty-queue">
                   Nenhum vídeo adicionado ainda.<br />
@@ -1182,30 +1257,38 @@ export default function App() {
                 </div>
               ) : (
                 <ul className="queue-list">
-                  {videos.map((v, idx) => (
-                    <li
-                      key={v.id}
-                      className={`queue-item ${idx === selectedIndex ? 'active' : ''}`}
-                      onClick={() => setSelectedIndex(idx)}
-                    >
-                      <div className="queue-item-info">
-                        <span className="queue-item-name">{v.name}</span>
-                        <span className="queue-item-meta">
-                          {v.crop ? `Corte: ${v.crop.width}x${v.crop.height}` : 'Sem corte definido'}
-                        </span>
-                      </div>
+                  {videos
+                    .map((v, originalIndex) => ({ v, originalIndex, statusInfo: getVideoServerStatus(v) }))
+                    .filter(({ statusInfo }) => {
+                      if (videoFilter === 'completed') return statusInfo.status === 'completed';
+                      if (videoFilter === 'pending') return statusInfo.status !== 'completed';
+                      return true;
+                    })
+                    .map(({ v, originalIndex, statusInfo }) => (
+                      <li
+                        key={v.id || originalIndex}
+                        className={`queue-item ${originalIndex === selectedIndex ? 'active' : ''}`}
+                        onClick={() => setSelectedIndex(originalIndex)}
+                      >
+                        <div className="queue-item-info">
+                          <span className="queue-item-name">{v.name}</span>
+                          <span className="queue-item-meta">
+                            {v.crop ? `Corte: ${v.crop.width}x${v.crop.height}` : 'Sem corte definido'}
+                          </span>
+                        </div>
 
-                      <div className="queue-item-actions">
-                        <span className="status-tag">{v.status}</span>
-                        <button
-                          className="btn btn-danger btn-sm"
-                          onClick={(e) => handleRemove(idx, e)}
-                        >
-                          ✕
-                        </button>
-                      </div>
-                    </li>
-                  ))}
+                        <div className="queue-item-actions">
+                          <span className={statusInfo.className}>{statusInfo.label}</span>
+                          <button
+                            className="btn btn-danger btn-sm"
+                            onClick={(e) => handleRemove(originalIndex, e)}
+                            title="Remover vídeo"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      </li>
+                    ))}
                 </ul>
               )}
             </div>

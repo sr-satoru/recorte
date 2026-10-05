@@ -120,7 +120,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             println!("Iniciando corte em: {}", file);
             let is_cancelled = Arc::new(AtomicBool::new(false));
-            crop_video(&file, &output, opts, is_cancelled, None).await?;
+            let progress = Arc::new(std::sync::Mutex::new(None));
+            crop_video(&file, &output, opts, is_cancelled, progress, None).await?;
             println!("Corte concluído com sucesso!");
         }
         Commands::Serve {

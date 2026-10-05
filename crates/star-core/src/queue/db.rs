@@ -319,24 +319,15 @@ pub fn spawn_queue_worker(manager: QueueManager) {
                     duration: 0.0,
                 };
 
-                let mut progress_rx = manager.progress_tx.subscribe();
-                let cur_prog = manager.current_progress.clone();
-                let progress_watcher = tokio::spawn(async move {
-                    while let Ok(prog) = progress_rx.recv().await {
-                        *cur_prog.lock().unwrap() = Some(prog);
-                    }
-                });
-
                 let result = crop_video(
                     &actual_path_str,
                     &target_output,
                     opts,
                     manager.is_cancelled.clone(),
+                    manager.current_progress.clone(),
                     Some(manager.progress_tx.clone()),
                 )
                 .await;
-
-                progress_watcher.abort();
 
                 if manager.is_cancelled.load(Ordering::SeqCst) {
                     manager.update_status(&item.path, "cancelled");
