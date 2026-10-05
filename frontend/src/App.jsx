@@ -47,6 +47,11 @@ export default function App() {
   // Crop dimensions for active video
   const [crop, setCrop] = useState({ x: 0, y: 0, width: 1920, height: 1080 });
   const [videoDims, setVideoDims] = useState({ width: 1920, height: 1080 });
+  const [pixelCrops, setPixelCrops] = useState({
+    bottom: 100,
+    top: 0,
+    sides: 0
+  });
 
   const videoRef = useRef(null);
   const containerRef = useRef(null);
@@ -280,6 +285,14 @@ export default function App() {
     if (!currentVideo?.crop) {
       setCrop({ x: 0, y: 0, width: w, height: h });
     }
+
+    setVideos(prev => {
+      if (!prev[selectedIndex]) return prev;
+      if (prev[selectedIndex].width === w && prev[selectedIndex].height === h) return prev;
+      const updated = [...prev];
+      updated[selectedIndex] = { ...updated[selectedIndex], width: w, height: h };
+      return updated;
+    });
   };
 
   const onTimeUpdate = () => {
@@ -496,6 +509,108 @@ export default function App() {
       updated[selectedIndex] = { ...updated[selectedIndex], crop: fullCrop };
       return updated;
     });
+  };
+
+  // Calculate crop rectangle for a specific video based on pixel cuts
+  const calculatePixelCrop = (w, h, cuts) => {
+    const bottom = cuts.bottom || 0;
+    const top = cuts.top || 0;
+    const sides = cuts.sides || 0;
+
+    const cropX = Math.floor(sides / 2) * 2;
+    const cropY = Math.floor(top / 2) * 2;
+    const cropW = Math.max(100, Math.floor(Math.max(100, w - sides * 2) / 2) * 2);
+    const cropH = Math.max(100, Math.floor(Math.max(100, h - top - bottom) / 2) * 2);
+
+    return {
+      x: cropX,
+      y: cropY,
+      width: cropW,
+      height: cropH,
+      bottomCut: bottom,
+      topCut: top,
+      sidesCut: sides
+    };
+  };
+
+  const handleApplyPixelCropCurrent = () => {
+    if (!currentVideo) {
+      showToast('Nenhum vídeo selecionado.');
+      return;
+    }
+    const w = currentVideo.width || videoDims.width || 1920;
+    const h = currentVideo.height || videoDims.height || 1080;
+    const newCrop = calculatePixelCrop(w, h, pixelCrops);
+
+    setCrop(newCrop);
+    setVideos(prev => {
+      if (!prev[selectedIndex]) return prev;
+      const updated = [...prev];
+      updated[selectedIndex] = { ...updated[selectedIndex], crop: newCrop, width: w, height: h };
+      return updated;
+    });
+
+    showToast(`Corte aplicado: ${newCrop.width}x${newCrop.height} (-${pixelCrops.bottom}px na base)`);
+  };
+
+  const handleApplyPixelCropAll = () => {
+    if (videos.length === 0) {
+      showToast('Nenhum vídeo na lista para aplicar.');
+      return;
+    }
+    const baseW = videoDims.width || 1920;
+    const baseH = videoDims.height || 1080;
+
+    setVideos(prev =>
+      prev.map(v => {
+        const vw = v.width || baseW;
+        const vh = v.height || baseH;
+        const c = calculatePixelCrop(vw, vh, pixelCrops);
+        return { ...v, crop: c, width: vw, height: vh };
+      })
+    );
+
+    const activeCrop = calculatePixelCrop(baseW, baseH, pixelCrops);
+    setCrop(activeCrop);
+
+    showToast(`⚡ Corte de -${pixelCrops.bottom}px na base aplicado em massa em todos os ${videos.length} vídeos!`);
+  };
+
+  const handleCopyCurrentCropToAll = () => {
+    if (!currentVideo || !crop) {
+      showToast('Selecione um vídeo com corte para replicar.');
+      return;
+    }
+    const sourceCrop = { ...crop };
+
+    setVideos(prev =>
+      prev.map(v => ({
+        ...v,
+        crop: { ...sourceCrop }
+      }))
+    );
+
+    showToast(`📋 Corte de ${sourceCrop.width}x${sourceCrop.height} replicado para todos os ${videos.length} vídeos!`);
+  };
+
+  const handleResetAllCrops = () => {
+    if (videos.length === 0) return;
+    const baseW = videoDims.width || 1920;
+    const baseH = videoDims.height || 1080;
+
+    setVideos(prev =>
+      prev.map(v => {
+        const vw = v.width || baseW;
+        const vh = v.height || baseH;
+        return {
+          ...v,
+          crop: { x: 0, y: 0, width: vw, height: vh }
+        };
+      })
+    );
+
+    setCrop({ x: 0, y: 0, width: baseW, height: baseH });
+    showToast('Todos os vídeos resetados para tela cheia.');
   };
 
   const handleClearList = () => {
@@ -1256,6 +1371,120 @@ export default function App() {
               </div>
             </div>
 
+            {/* Quick Pixel Crop & Bulk Apply Section */}
+            <div className="bulk-crop-panel">
+              <div className="bulk-crop-header">
+                <div className="bulk-crop-title">
+                  <span>✂️</span>
+                  <span>Corte Rápido por Pixels & Aplicação em Massa</span>
+                </div>
+                <div className="bulk-crop-hint">
+                  Defina a quantidade de pixels para remover da base (ou bordas) e aplique em todos os vídeos de uma só vez.
+                </div>
+              </div>
+
+              <div className="bulk-crop-inputs-grid">
+                <div className="bulk-input-group">
+                  <label>Cortar da Base (Embaixo):</label>
+                  <div className="bulk-input-with-unit">
+                    <input
+                      type="number"
+                      min="0"
+                      max={Math.max(100, (videoDims.height || 1080) - 50)}
+                      step="2"
+                      value={pixelCrops.bottom}
+                      onChange={(e) => setPixelCrops(prev => ({ ...prev, bottom: Math.max(0, parseInt(e.target.value, 10) || 0) }))}
+                    />
+                    <span>px</span>
+                  </div>
+                  <div className="quick-presets">
+                    {[50, 80, 100, 120, 140, 160].map(val => (
+                      <button
+                        key={val}
+                        type="button"
+                        className={`preset-chip ${pixelCrops.bottom === val ? 'active' : ''}`}
+                        onClick={() => setPixelCrops(prev => ({ ...prev, bottom: val }))}
+                      >
+                        {val}px
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="bulk-input-group">
+                  <label>Cortar do Topo (Acima):</label>
+                  <div className="bulk-input-with-unit">
+                    <input
+                      type="number"
+                      min="0"
+                      max={Math.max(100, (videoDims.height || 1080) - 50)}
+                      step="2"
+                      value={pixelCrops.top}
+                      onChange={(e) => setPixelCrops(prev => ({ ...prev, top: Math.max(0, parseInt(e.target.value, 10) || 0) }))}
+                    />
+                    <span>px</span>
+                  </div>
+                </div>
+
+                <div className="bulk-input-group">
+                  <label>Cortar Laterais (Esq / Dir):</label>
+                  <div className="bulk-input-with-unit">
+                    <input
+                      type="number"
+                      min="0"
+                      max={Math.max(100, (videoDims.width || 1920) - 50)}
+                      step="2"
+                      value={pixelCrops.sides}
+                      onChange={(e) => setPixelCrops(prev => ({ ...prev, sides: Math.max(0, parseInt(e.target.value, 10) || 0) }))}
+                    />
+                    <span>px</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bulk-actions-row">
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={handleApplyPixelCropCurrent}
+                  disabled={!currentVideo}
+                  title="Aplica esses pixels de corte apenas no vídeo selecionado atualmente"
+                >
+                  ✂️ Aplicar no Vídeo Atual
+                </button>
+
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  onClick={handleApplyPixelCropAll}
+                  disabled={videos.length === 0}
+                  title="Calcula e aplica esse corte em todos os vídeos da lista"
+                >
+                  ⚡ Aplicar em Massa em Todos ({videos.length})
+                </button>
+
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={handleCopyCurrentCropToAll}
+                  disabled={videos.length <= 1 || !currentVideo?.crop}
+                  title="Copia o retângulo de corte exato deste vídeo para todos os outros"
+                >
+                  📋 Replicar Este Corte para Todos
+                </button>
+
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={handleResetAllCrops}
+                  disabled={videos.length === 0}
+                  title="Reseta o corte de todos os vídeos para tela cheia"
+                >
+                  ↺ Resetar Todos
+                </button>
+              </div>
+            </div>
+
             {/* Right: Video List */}
             <div className="queue-card">
               <div className="queue-header">
@@ -1321,7 +1550,12 @@ export default function App() {
                         <div className="queue-item-info">
                           <span className="queue-item-name">{v.name}</span>
                           <span className="queue-item-meta">
-                            {v.crop ? `Corte: ${v.crop.width}x${v.crop.height}` : 'Sem corte definido'}
+                            {v.crop ? (
+                              <>
+                                Corte: {v.crop.width}x{v.crop.height}
+                                {v.crop.bottomCut ? ` (-${v.crop.bottomCut}px base)` : ''}
+                              </>
+                            ) : 'Sem corte definido'}
                           </span>
                         </div>
 
