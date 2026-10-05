@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Star",
-  "version": "1.0.3",
+  "version": "1.0.6",
   "identifier": "com.star.desktop",
   "build": {
     "frontendDist": "../frontend/dist",
@@ -12,7 +12,9 @@
   "app": {
     "windows": [
       {
+        "label": "main",
         "title": "Star Studio & Queue Dashboard",
+        "url": "index.html",
         "width": 1280,
         "height": 840,
         "minWidth": 900,
@@ -35,17 +37,11 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "resources": [
-      "../src/**/*",
-      "../package.json"
-    ],
-    "externalBin": [
-      "binaries/star-engine"
-    ]
-  },
-  "plugins": {
-    "shell": {
-      "sidecar": true
+    "windows": {
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper",
+        "silent": false
+      }
     }
   }
 }

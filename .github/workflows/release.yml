@@ -45,7 +45,7 @@ jobs:
       - name: Rust cache
         uses: swatinem/rust-cache@v2
         with:
-          workspaces: './src-tauri -> target'
+          workspaces: './ -> target'
 
       - name: Install Linux dependencies (Ubuntu only)
         if: matrix.platform == 'ubuntu-22.04'
@@ -62,18 +62,13 @@ jobs:
             libayatana-appindicator3-dev \
             librsvg2-dev
 
-      - name: Install NPM dependencies
+      - name: Install Frontend NPM dependencies
         run: |
-          npm install
           npm --prefix frontend install
-
-      - name: Prepare Node.js Sidecar Binary
-        run: |
-          npm run prepare:sidecar
 
       - name: Build Frontend Web Assets
         run: |
-          npm run build:ui
+          npm --prefix frontend run build
 
       - name: Build Tauri Desktop App
         uses: tauri-apps/tauri-action@v0
@@ -85,7 +80,7 @@ jobs:
           releaseBody: |
             ## 🎬 Star Desktop - Release v__VERSION__
             
-            Instaladores automáticos multiplataforma com motor Node.js integrado (Sidecar) e interface desktop de alta performance:
+            Instaladores automáticos multiplataforma com Star Core nativo em Rust integrado (sem dependência externa de Node.js) e interface desktop de alta performance:
             
             - 🐧 **Linux**: Pacotes `.deb` (Debian/Ubuntu) e `.AppImage`
             - 🪟 **Windows**: Instaladores `.msi` e `.exe` (NSIS)

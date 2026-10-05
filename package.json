@@ -11,7 +11,6 @@
     "serve": "node src/main.js serve",
     "dev:ui": "npm --prefix frontend run dev",
     "build:ui": "npm --prefix frontend run build",
-    "prepare:sidecar": "node scripts/prepare-sidecar.js",
     "tauri": "tauri"
   },
   "devDependencies": {
