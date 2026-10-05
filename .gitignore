@@ -23,8 +23,8 @@ queue.db*
 *.log
 
 # Mídias e binários locais de teste
-ffmpeg
-ffprobe
+/ffmpeg*
+/ffprobe*
 *.mkv
 *.mp4
 *.avi
