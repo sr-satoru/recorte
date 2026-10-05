@@ -1165,9 +1165,10 @@ export default function App() {
 
           {/* Main Grid: Player on the left, Video list on the right */}
           <div className="main-grid">
-            {/* Left: Player & Crop */}
-            <div className="player-card">
-              <div className="player-title">
+            {/* Left Column: Player & Bulk Pixel Crop */}
+            <div className="player-column">
+              <div className="player-card">
+                <div className="player-title">
                 <span>
                   {currentVideo ? currentVideo.name : 'Nenhum vídeo selecionado'}
                 </span>
@@ -1484,6 +1485,8 @@ export default function App() {
                 </button>
               </div>
             </div>
+            {/* End Left Column (player-column) */}
+          </div>
 
             {/* Right: Video List */}
             <div className="queue-card">

@@ -213,7 +213,14 @@
   gap: 16px;
 }
 
-/* Player Column */
+/* Left Column: Player & Bulk Pixel Panel */
+.player-column {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* Player Card */
 .player-card {
   background: var(--bg-surface);
   border: 1px solid var(--border);
