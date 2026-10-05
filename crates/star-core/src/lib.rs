@@ -70,6 +70,19 @@ pub async fn start_engine(config: EngineConfig) -> Result<EngineHandle, String> 
         }
     });
 
+    // Ensure FFmpeg is available in the dedicated app folder
+    tokio::spawn(async {
+        if !ffmpeg::is_app_ffmpeg_ready() {
+            println!("[Star Engine] FFmpeg dedicado não encontrado na pasta do app. Iniciando download automático em segundo plano...");
+            if let Err(e) = ffmpeg::ensure_app_ffmpeg().await {
+                eprintln!("[Star Engine] Aviso: Falha no download automático do FFmpeg dedicado: {}", e);
+            }
+        } else {
+            let (ff, _) = ffmpeg::get_app_ffmpeg_paths();
+            println!("[Star Engine] FFmpeg dedicado ativo em: {}", ff.display());
+        }
+    });
+
     Ok(EngineHandle { queue, app_state })
 }
 

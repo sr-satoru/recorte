@@ -24,6 +24,8 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/api/1/system/directories", get(list_directories))
         .route("/api/1/system/resolve-folder", post(resolve_folder))
         .route("/api/1/system/create-folder", post(create_folder))
+        .route("/api/1/system/ffmpeg-status", get(get_ffmpeg_status))
+        .route("/api/1/system/ffmpeg-download", post(trigger_ffmpeg_download))
         .route("/api/1/webhook/sonarr", post(sonarr_webhook))
         .route("/api/1/webhook/radarr", post(radarr_webhook));
 

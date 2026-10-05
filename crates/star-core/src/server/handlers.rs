@@ -6,6 +6,10 @@ use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use crate::ffmpeg::downloader::{
+    ensure_app_ffmpeg, get_app_bin_dir, get_app_ffmpeg_paths, is_app_ffmpeg_ready,
+    DOWNLOAD_PROGRESS_BYTES, DOWNLOAD_TOTAL_BYTES, IS_DOWNLOADING_FFMPEG,
+};
 use crate::queue::QueueManager;
 use crate::system::{
     create_folder as sys_create_folder, list_directories as sys_list_directories,
@@ -364,3 +368,73 @@ fn handle_arr_webhook(state: &AppState, event: &Value, program: &str) -> Json<Va
         })),
     }
 }
+
+fn find_in_path(cmd: &str) -> Option<PathBuf> {
+    if let Some(paths) = std::env::var_os("PATH") {
+        for path in std::env::split_paths(&paths) {
+            #[cfg(windows)]
+            let exe = path.join(format!("{}.exe", cmd));
+            #[cfg(not(windows))]
+            let exe = path.join(cmd);
+            if exe.is_file() {
+                return Some(exe);
+            }
+        }
+    }
+    None
+}
+
+pub async fn get_ffmpeg_status() -> impl IntoResponse {
+    let ready = is_app_ffmpeg_ready();
+    let (ffmpeg_p, ffprobe_p) = get_app_ffmpeg_paths();
+    let is_downloading = IS_DOWNLOADING_FFMPEG.load(std::sync::atomic::Ordering::SeqCst);
+    let downloaded_bytes = DOWNLOAD_PROGRESS_BYTES.load(std::sync::atomic::Ordering::SeqCst);
+    let total_bytes = DOWNLOAD_TOTAL_BYTES.load(std::sync::atomic::Ordering::SeqCst);
+    let app_dir = get_app_bin_dir();
+
+    let percent = if total_bytes > 0 {
+        ((downloaded_bytes as f64 / total_bytes as f64) * 100.0).round()
+    } else {
+        0.0
+    };
+
+    let global_ffmpeg = find_in_path("ffmpeg");
+
+    Json(json!({
+        "success": true,
+        "appFfmpegReady": ready,
+        "isDownloading": is_downloading,
+        "downloadedBytes": downloaded_bytes,
+        "totalBytes": total_bytes,
+        "downloadPercent": percent,
+        "appBinDir": app_dir.to_string_lossy(),
+        "appFfmpegPath": ffmpeg_p.to_string_lossy(),
+        "appFfprobePath": ffprobe_p.to_string_lossy(),
+        "hasGlobalFfmpeg": global_ffmpeg.is_some(),
+        "globalFfmpegPath": global_ffmpeg.map(|p| p.to_string_lossy().to_string()),
+        "usingAppBinary": ready
+    }))
+}
+
+pub async fn trigger_ffmpeg_download() -> impl IntoResponse {
+    if is_app_ffmpeg_ready() {
+        return Json(json!({
+            "success": true,
+            "message": "FFmpeg dedicado já está instalado e pronto",
+            "isDownloading": false
+        }));
+    }
+
+    tokio::spawn(async {
+        if let Err(e) = ensure_app_ffmpeg().await {
+            eprintln!("[Star Engine] Erro ao baixar FFmpeg dedicado: {}", e);
+        }
+    });
+
+    Json(json!({
+        "success": true,
+        "message": "Download do FFmpeg dedicado iniciado em segundo plano",
+        "isDownloading": true
+    }))
+}
+

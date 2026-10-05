@@ -28,6 +28,14 @@ export default function App() {
     activeItem: null,
     currentProgress: null
   });
+  const [ffmpegStatus, setFfmpegStatus] = useState({
+    appFfmpegReady: false,
+    isDownloading: false,
+    downloadPercent: 0,
+    usingAppBinary: false,
+    appBinDir: '',
+    appFfmpegPath: ''
+  });
   const [videoFilter, setVideoFilter] = useState('all');
   const [isCancelling, setIsCancelling] = useState(false);
 
@@ -128,6 +136,16 @@ export default function App() {
       }
     } catch {
       setBackendOnline(false);
+    }
+
+    try {
+      const ffmpegRes = await fetch(`${API_BASE}/api/1/system/ffmpeg-status`);
+      const ffmpegData = await ffmpegRes.json();
+      if (ffmpegData.success) {
+        setFfmpegStatus(ffmpegData);
+      }
+    } catch {
+      // ignore
     }
   }, []);
 
@@ -725,6 +743,36 @@ export default function App() {
           <span className={`dot ${backendOnline ? 'online' : ''}`}></span>
           <span>{backendOnline ? 'Servidor Conectado (:4200)' : 'Modo Local'}</span>
         </div>
+
+        {ffmpegStatus.isDownloading && (
+          <div className="status-badge" style={{ borderColor: 'var(--accent)', color: 'var(--accent)' }}>
+            <span className="dot" style={{ backgroundColor: 'var(--accent)' }}></span>
+            <span>Baixando FFmpeg isolado ({ffmpegStatus.downloadPercent}%)...</span>
+          </div>
+        )}
+        {!ffmpegStatus.isDownloading && ffmpegStatus.appFfmpegReady && (
+          <div className="status-badge" title={`FFmpeg isolado em: ${ffmpegStatus.appFfmpegPath || ffmpegStatus.appBinDir}`}>
+            <span className="dot online"></span>
+            <span>FFmpeg Dedicado</span>
+          </div>
+        )}
+        {!ffmpegStatus.isDownloading && !ffmpegStatus.appFfmpegReady && backendOnline && (
+          <button
+            type="button"
+            className="btn btn-secondary"
+            style={{ padding: '4px 10px', fontSize: '12px' }}
+            onClick={async () => {
+              try {
+                await fetch(`${API_BASE}/api/1/system/ffmpeg-download`, { method: 'POST' });
+                showToast('Download do FFmpeg iniciado!');
+              } catch {
+                showToast('Falha ao acionar download.');
+              }
+            }}
+          >
+            📥 Baixar FFmpeg Isolado
+          </button>
+        )}
       </header>
 
       {/* SERVER PROCESSING TAB */}
