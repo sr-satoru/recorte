@@ -1,0 +1,15 @@
+**/node_modules
+**/temp
+**/tmp
+ffmpeg
+*.mkv
+*.mp4
+*.avi
+.yarn
+queue.db
+dist
+frontend/dist
+src-tauri/target
+src-tauri/binaries
+*.log
+.DS_Store
