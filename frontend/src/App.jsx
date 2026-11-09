@@ -1,6 +1,368 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { saveVideosToDB, loadVideosFromDB, clearVideosFromDB } from './utils/storage.js';
 import './App.css';
+
+// Memoized Playback Controls Component to prevent re-rendering entire UI during video playback
+const PlaybackBar = React.memo(function PlaybackBar({
+  isPlaying,
+  currentTime,
+  duration,
+  togglePlay,
+  handleStep,
+  handleSeek,
+  formatTime
+}) {
+  return (
+    <div className="playback-bar-bottom">
+      <button
+        type="button"
+        className="btn-play-pause"
+        onClick={togglePlay}
+        title={isPlaying ? 'Pausar' : 'Reproduzir'}
+      >
+        {isPlaying ? '❚❚' : '▶'}
+      </button>
+
+      <button
+        type="button"
+        className="btn-step"
+        onClick={() => handleStep(-5)}
+        title="Voltar 5 segundos"
+      >
+        -5s
+      </button>
+
+      <button
+        type="button"
+        className="btn-step"
+        onClick={() => handleStep(5)}
+        title="Avançar 5 segundos"
+      >
+        +5s
+      </button>
+
+      <input
+        type="range"
+        className="timeline-slider"
+        min={0}
+        max={duration || 100}
+        step={0.1}
+        value={currentTime}
+        onChange={handleSeek}
+      />
+
+      <span className="time-display">
+        {formatTime(currentTime)} / {formatTime(duration)}
+      </span>
+    </div>
+  );
+});
+
+// Memoized Video Queue Component to prevent expensive list re-renders on video playback or slider ticks
+const VideoQueueList = React.memo(function VideoQueueList({
+  videos,
+  selectedIndex,
+  videoFilter,
+  setVideoFilter,
+  serverStatusMap,
+  onSelectIndex,
+  onRemoveVideo,
+  onClearList
+}) {
+  const filteredVideos = useMemo(() => {
+    return videos
+      .map((v, originalIndex) => {
+        const vPath = v.path || v.name || '';
+        const vName = v.name || vPath.split(/[/\\]/).pop() || '';
+        const statusInfo = serverStatusMap.get(vPath) || serverStatusMap.get(vName) || {
+          status: 'pending',
+          label: v.status || 'Pendente',
+          className: 'status-tag'
+        };
+        return { v, originalIndex, statusInfo };
+      })
+      .filter(({ statusInfo }) => {
+        if (videoFilter === 'completed') return statusInfo.status === 'completed';
+        if (videoFilter === 'pending') return statusInfo.status !== 'completed';
+        return true;
+      });
+  }, [videos, videoFilter, serverStatusMap]);
+
+  return (
+    <div className="queue-card">
+      <div className="queue-header">
+        <span className="queue-title">
+          Vídeos ({videos.length})
+        </span>
+        {videos.length > 0 && (
+          <button
+            className="btn btn-secondary btn-sm"
+            onClick={onClearList}
+          >
+            Limpar Lista
+          </button>
+        )}
+      </div>
+
+      {videos.length > 0 && (
+        <div style={{ display: 'flex', gap: '6px', margin: '8px 0 12px 0', flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            className={`btn btn-xs ${videoFilter === 'all' ? 'btn-primary' : 'btn-secondary'}`}
+            onClick={() => setVideoFilter('all')}
+          >
+            Todos ({videos.length})
+          </button>
+          <button
+            type="button"
+            className={`btn btn-xs ${videoFilter === 'pending' ? 'btn-primary' : 'btn-secondary'}`}
+            onClick={() => setVideoFilter('pending')}
+          >
+            Pendentes ({videos.filter(v => {
+              const vPath = v.path || v.name || '';
+              const vName = v.name || vPath.split(/[/\\]/).pop() || '';
+              const st = serverStatusMap.get(vPath) || serverStatusMap.get(vName);
+              return st?.status !== 'completed';
+            }).length})
+          </button>
+          <button
+            type="button"
+            className={`btn btn-xs ${videoFilter === 'completed' ? 'btn-primary' : 'btn-secondary'}`}
+            onClick={() => setVideoFilter('completed')}
+          >
+            ✓ Concluídos ({videos.filter(v => {
+              const vPath = v.path || v.name || '';
+              const vName = v.name || vPath.split(/[/\\]/).pop() || '';
+              const st = serverStatusMap.get(vPath) || serverStatusMap.get(vName);
+              return st?.status === 'completed';
+            }).length})
+          </button>
+        </div>
+      )}
+
+      {videos.length === 0 ? (
+        <div className="empty-queue">
+          Nenhum vídeo adicionado ainda.<br />
+          Clique em <strong>📁 Selecionar Pasta</strong> ou arraste um vídeo para cá.
+        </div>
+      ) : (
+        <ul className="queue-list">
+          {filteredVideos.map(({ v, originalIndex, statusInfo }) => (
+            <li
+              key={v.id || originalIndex}
+              className={`queue-item ${originalIndex === selectedIndex ? 'active' : ''}`}
+              onClick={() => onSelectIndex(originalIndex)}
+            >
+              <div className="queue-item-info">
+                <span className="queue-item-name">{v.name}</span>
+                <span className="queue-item-meta">
+                  {v.crop ? (
+                    <>
+                      Corte: {v.crop.width}x{v.crop.height}
+                      {v.crop.bottomCut ? ` (-${v.crop.bottomCut}px base)` : ''}
+                    </>
+                  ) : 'Sem corte definido'}
+                </span>
+              </div>
+
+              <div className="queue-item-actions">
+                <span className={statusInfo.className}>{statusInfo.label}</span>
+                <button
+                  className="btn btn-danger btn-sm"
+                  onClick={(e) => onRemoveVideo(originalIndex, e)}
+                  title="Remover vídeo"
+                >
+                  ✕
+                </button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+});
+
+// Memoized Playback Controls Component to prevent re-rendering entire UI during video playback
+const PlaybackBar = React.memo(function PlaybackBar({
+  isPlaying,
+  currentTime,
+  duration,
+  togglePlay,
+  handleStep,
+  handleSeek,
+  formatTime
+}) {
+  return (
+    <div className="playback-bar-bottom">
+      <button
+        type="button"
+        className="btn-play-pause"
+        onClick={togglePlay}
+        title={isPlaying ? 'Pausar' : 'Reproduzir'}
+      >
+        {isPlaying ? '❚❚' : '▶'}
+      </button>
+
+      <button
+        type="button"
+        className="btn-step"
+        onClick={() => handleStep(-5)}
+        title="Voltar 5 segundos"
+      >
+        -5s
+      </button>
+
+      <button
+        type="button"
+        className="btn-step"
+        onClick={() => handleStep(5)}
+        title="Avançar 5 segundos"
+      >
+        +5s
+      </button>
+
+      <input
+        type="range"
+        className="timeline-slider"
+        min={0}
+        max={duration || 100}
+        step={0.1}
+        value={currentTime}
+        onChange={handleSeek}
+      />
+
+      <span className="time-display">
+        {formatTime(currentTime)} / {formatTime(duration)}
+      </span>
+    </div>
+  );
+});
+
+// Memoized Video Queue Component to prevent expensive list re-renders on video playback or slider ticks
+const VideoQueueList = React.memo(function VideoQueueList({
+  videos,
+  selectedIndex,
+  videoFilter,
+  setVideoFilter,
+  serverStatusMap,
+  onSelectIndex,
+  onRemoveVideo,
+  onClearList
+}) {
+  const filteredVideos = useMemo(() => {
+    return videos
+      .map((v, originalIndex) => {
+        const vPath = v.path || v.name || '';
+        const vName = v.name || vPath.split(/[/\\]/).pop() || '';
+        const statusInfo = serverStatusMap.get(vPath) || serverStatusMap.get(vName) || {
+          status: 'pending',
+          label: v.status || 'Pendente',
+          className: 'status-tag'
+        };
+        return { v, originalIndex, statusInfo };
+      })
+      .filter(({ statusInfo }) => {
+        if (videoFilter === 'completed') return statusInfo.status === 'completed';
+        if (videoFilter === 'pending') return statusInfo.status !== 'completed';
+        return true;
+      });
+  }, [videos, videoFilter, serverStatusMap]);
+
+  return (
+    <div className="queue-card">
+      <div className="queue-header">
+        <span className="queue-title">
+          Vídeos ({videos.length})
+        </span>
+        {videos.length > 0 && (
+          <button
+            className="btn btn-secondary btn-sm"
+            onClick={onClearList}
+          >
+            Limpar Lista
+          </button>
+        )}
+      </div>
+
+      {videos.length > 0 && (
+        <div style={{ display: 'flex', gap: '6px', margin: '8px 0 12px 0', flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            className={`btn btn-xs ${videoFilter === 'all' ? 'btn-primary' : 'btn-secondary'}`}
+            onClick={() => setVideoFilter('all')}
+          >
+            Todos ({videos.length})
+          </button>
+          <button
+            type="button"
+            className={`btn btn-xs ${videoFilter === 'pending' ? 'btn-primary' : 'btn-secondary'}`}
+            onClick={() => setVideoFilter('pending')}
+          >
+            Pendentes ({videos.filter(v => {
+              const vPath = v.path || v.name || '';
+              const vName = v.name || vPath.split(/[/\\]/).pop() || '';
+              const st = serverStatusMap.get(vPath) || serverStatusMap.get(vName);
+              return st?.status !== 'completed';
+            }).length})
+          </button>
+          <button
+            type="button"
+            className={`btn btn-xs ${videoFilter === 'completed' ? 'btn-primary' : 'btn-secondary'}`}
+            onClick={() => setVideoFilter('completed')}
+          >
+            ✓ Concluídos ({videos.filter(v => {
+              const vPath = v.path || v.name || '';
+              const vName = v.name || vPath.split(/[/\\]/).pop() || '';
+              const st = serverStatusMap.get(vPath) || serverStatusMap.get(vName);
+              return st?.status === 'completed';
+            }).length})
+          </button>
+        </div>
+      )}
+
+      {videos.length === 0 ? (
+        <div className="empty-queue">
+          Nenhum vídeo adicionado ainda.<br />
+          Clique em <strong>📁 Selecionar Pasta</strong> ou arraste um vídeo para cá.
+        </div>
+      ) : (
+        <ul className="queue-list">
+          {filteredVideos.map(({ v, originalIndex, statusInfo }) => (
+            <li
+              key={v.id || originalIndex}
+              className={`queue-item ${originalIndex === selectedIndex ? 'active' : ''}`}
+              onClick={() => onSelectIndex(originalIndex)}
+            >
+              <div className="queue-item-info">
+                <span className="queue-item-name">{v.name}</span>
+                <span className="queue-item-meta">
+                  {v.crop ? (
+                    <>
+                      Corte: {v.crop.width}x{v.crop.height}
+                      {v.crop.bottomCut ? ` (-${v.crop.bottomCut}px base)` : ''}
+                    </>
+                  ) : 'Sem corte definido'}
+                </span>
+              </div>
+
+              <div className="queue-item-actions">
+                <span className={statusInfo.className}>{statusInfo.label}</span>
+                <button
+                  className="btn btn-danger btn-sm"
+                  onClick={(e) => onRemoveVideo(originalIndex, e)}
+                  title="Remover vídeo"
+                >
+                  ✕
+                </button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+});
 
 const API_BASE = (typeof window !== 'undefined' && window.location.port !== '4200') ? 'http://localhost:4200' : '';
 
@@ -121,22 +483,49 @@ export default function App() {
     });
   }, []);
 
-  // Auto-save videos and crop definitions to IndexedDB whenever videos changes
+  // Auto-save videos and crop definitions to IndexedDB whenever videos changes (lightweight metadata only)
+  const prevVideosJsonRef = useRef('');
   useEffect(() => {
     if (!isStorageLoaded) return;
+    const metadata = videos.map((v, i) => ({
+      id: v.id,
+      name: v.name,
+      path: v.path,
+      status: v.status || 'Pendente',
+      crop: v.crop || null,
+      width: v.width || null,
+      height: v.height || null,
+      order: i
+    }));
+    const json = JSON.stringify(metadata);
+    if (json === prevVideosJsonRef.current) return;
+
     const timer = setTimeout(() => {
-      saveVideosToDB(videos);
-    }, 300);
+      prevVideosJsonRef.current = json;
+      saveVideosToDB(metadata);
+    }, 400);
     return () => clearTimeout(timer);
   }, [videos, isStorageLoaded]);
 
   // Poll backend server queue & active job status
+  const prevStatusRef = useRef({ queueStr: '', ffmpegStr: '' });
   const fetchServerStatus = useCallback(async () => {
     try {
       const res = await fetch(`${API_BASE}/api/1/queue/detailed`);
       const data = await res.json();
       if (data.success && data.detail) {
-        setServerQueueData(data.detail);
+        const queueStr = JSON.stringify({
+          inProg: data.detail.inProgress,
+          actItem: data.detail.activeItem,
+          pct: data.detail.currentProgress?.percentage,
+          time: data.detail.currentProgress?.time,
+          count: data.detail.items?.length,
+          lastSt: data.detail.items?.[0]?.status
+        });
+        if (queueStr !== prevStatusRef.current.queueStr) {
+          prevStatusRef.current.queueStr = queueStr;
+          setServerQueueData(data.detail);
+        }
         setBackendOnline(true);
       }
     } catch {
@@ -147,7 +536,15 @@ export default function App() {
       const ffmpegRes = await fetch(`${API_BASE}/api/1/system/ffmpeg-status`);
       const ffmpegData = await ffmpegRes.json();
       if (ffmpegData.success) {
-        setFfmpegStatus(ffmpegData);
+        const ffmpegStr = JSON.stringify({
+          ready: ffmpegData.appFfmpegReady,
+          down: ffmpegData.isDownloading,
+          pct: ffmpegData.downloadPercent
+        });
+        if (ffmpegStr !== prevStatusRef.current.ffmpegStr) {
+          prevStatusRef.current.ffmpegStr = ffmpegStr;
+          setFfmpegStatus(ffmpegData);
+        }
       }
     } catch {
       // ignore
@@ -160,53 +557,58 @@ export default function App() {
     return () => clearInterval(interval);
   }, [fetchServerStatus]);
 
-  // Synchronize server status for any video in preview list
+  // Synchronize server status for any video in preview list (O(1) Map)
+  const serverStatusMap = useMemo(() => {
+    const map = new Map();
+    const inProg = serverQueueData?.inProgress;
+    const activeItem = serverQueueData?.activeItem;
+    const activePct = serverQueueData?.currentProgress?.percentage || 0;
+
+    const items = serverQueueData?.items || [];
+    for (const item of items) {
+      if (item && item.path) {
+        const name = item.path.split(/[/\\]/).pop() || '';
+        let info;
+        if (item.status === 'completed') {
+          info = { status: 'completed', label: '✓ Concluído', className: 'status-tag completed' };
+        } else if (item.status === 'failed') {
+          info = { status: 'failed', label: '✕ Falhou', className: 'status-tag failed' };
+        } else if (item.status === 'cancelled') {
+          info = { status: 'cancelled', label: 'Cancelado', className: 'status-tag' };
+        } else if (item.status === 'pending') {
+          info = { status: 'queued', label: 'Na Fila', className: 'status-tag' };
+        } else {
+          info = { status: item.status, label: item.status, className: 'status-tag' };
+        }
+        map.set(item.path, info);
+        map.set(name, info);
+      }
+    }
+
+    if (inProg && activeItem) {
+      const activeName = activeItem.split(/[/\\]/).pop() || '';
+      const procInfo = {
+        status: 'processing',
+        label: `⚡ Processando (${activePct}%)`,
+        className: 'status-tag processing'
+      };
+      map.set(activeItem, procInfo);
+      map.set(activeName, procInfo);
+    }
+
+    return map;
+  }, [serverQueueData]);
+
   const getVideoServerStatus = useCallback((v) => {
     if (!v) return { status: 'pending', label: 'Pendente', className: 'status-tag' };
     const vPath = v.path || v.name || '';
-    const vName = v.name || vPath.split(/[\/\\]/).pop() || '';
-
-    // Check if active
-    if (serverQueueData?.inProgress && serverQueueData.activeItem) {
-      const activePath = serverQueueData.activeItem;
-      const activeName = activePath.split(/[\/\\]/).pop() || '';
-      if (activePath === vPath || activeName === vName) {
-        const pct = serverQueueData.currentProgress?.percentage || 0;
-        return {
-          status: 'processing',
-          label: `⚡ Processando (${pct}%)`,
-          className: 'status-tag processing'
-        };
-      }
-    }
-
-    // Check in server queue history/items
-    if (serverQueueData?.items && Array.isArray(serverQueueData.items)) {
-      const found = serverQueueData.items.find(item => {
-        if (!item || !item.path) return false;
-        if (item.path === vPath) return true;
-        const itemName = item.path.split(/[\/\\]/).pop() || '';
-        return itemName === vName;
-      });
-
-      if (found) {
-        if (found.status === 'completed') {
-          return { status: 'completed', label: '✓ Concluído', className: 'status-tag completed' };
-        }
-        if (found.status === 'failed') {
-          return { status: 'failed', label: '✕ Falhou', className: 'status-tag failed' };
-        }
-        if (found.status === 'cancelled') {
-          return { status: 'cancelled', label: 'Cancelado', className: 'status-tag' };
-        }
-        if (found.status === 'pending') {
-          return { status: 'queued', label: 'Na Fila', className: 'status-tag' };
-        }
-      }
-    }
-
-    return { status: 'pending', label: v.status || 'Pendente', className: 'status-tag' };
-  }, [serverQueueData]);
+    const vName = v.name || vPath.split(/[/\\]/).pop() || '';
+    return serverStatusMap.get(vPath) || serverStatusMap.get(vName) || {
+      status: 'pending',
+      label: v.status || 'Pendente',
+      className: 'status-tag'
+    };
+  }, [serverStatusMap]);
 
   // Cancel currently running job
   const handleCancelActive = async () => {
@@ -251,6 +653,11 @@ export default function App() {
   const currentVideo = videos[selectedIndex] || null;
   const currentVideoRef = useRef(currentVideo);
   currentVideoRef.current = currentVideo;
+  const selectedIndexRef = useRef(selectedIndex);
+  selectedIndexRef.current = selectedIndex;
+  const videosRef = useRef(videos);
+  videosRef.current = videos;
+  const rafIdRef = useRef(null);
 
   // When a video is selected, update player source only if video changed
   useEffect(() => {
@@ -261,6 +668,8 @@ export default function App() {
 
     if (currentVideo.blobUrl && videoRef.current && activeVideoIdRef.current !== currentVideo.id) {
       activeVideoIdRef.current = currentVideo.id;
+      // Pause first to safely detach previous stream in WebKit/WebView decoder
+      videoRef.current.pause();
       videoRef.current.src = currentVideo.blobUrl;
       videoRef.current.load();
       setIsPlaying(false);
@@ -269,6 +678,13 @@ export default function App() {
 
     if (currentVideo.crop) {
       setCrop(currentVideo.crop);
+    } else {
+      setCrop({
+        x: 0,
+        y: 0,
+        width: currentVideo.width || videoDims.width || 1920,
+        height: currentVideo.height || videoDims.height || 1080
+      });
     }
   }, [selectedIndex, currentVideo?.id, currentVideo?.blobUrl]);
 
@@ -282,15 +698,16 @@ export default function App() {
     setCurrentTime(0);
     setIsPlaying(false);
 
-    if (!currentVideo?.crop) {
+    if (!currentVideoRef.current?.crop) {
       setCrop({ x: 0, y: 0, width: w, height: h });
     }
 
+    const idx = selectedIndexRef.current;
     setVideos(prev => {
-      if (!prev[selectedIndex]) return prev;
-      if (prev[selectedIndex].width === w && prev[selectedIndex].height === h) return prev;
+      if (!prev[idx]) return prev;
+      if (prev[idx].width === w && prev[idx].height === h) return prev;
       const updated = [...prev];
-      updated[selectedIndex] = { ...updated[selectedIndex], width: w, height: h };
+      updated[idx] = { ...updated[idx], width: w, height: h };
       return updated;
     });
   };
@@ -388,16 +805,47 @@ export default function App() {
     }
   };
 
-  // Remove video from list
-  const handleRemove = (index, e) => {
-    e.stopPropagation();
-    setVideos(prev => prev.filter((_, i) => i !== index));
-    if (selectedIndex >= index && selectedIndex > 0) {
-      setSelectedIndex(selectedIndex - 1);
-    }
-  };
+  // Remove video from list and free object URL
+  const handleRemove = useCallback((index, e) => {
+    if (e) e.stopPropagation();
+    setVideos(prev => {
+      const removed = prev[index];
+      if (removed?.blobUrl) {
+        URL.revokeObjectURL(removed.blobUrl);
+      }
+      return prev.filter((_, i) => i !== index);
+    });
+    setSelectedIndex(prev => {
+      if (prev >= index && prev > 0) {
+        return prev - 1;
+      }
+      return prev;
+    });
+  }, []);
 
-  // DRAG & RESIZE CROP BOX LOGIC
+  const handleClearList = useCallback(() => {
+    videosRef.current.forEach(v => {
+      if (v?.blobUrl) URL.revokeObjectURL(v.blobUrl);
+    });
+    setVideos([]);
+    setSelectedIndex(0);
+    clearVideosFromDB();
+    showToast('Lista de vídeos limpa.');
+  }, []);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (rafIdRef.current) {
+        cancelAnimationFrame(rafIdRef.current);
+      }
+      videosRef.current.forEach(v => {
+        if (v?.blobUrl) URL.revokeObjectURL(v.blobUrl);
+      });
+    };
+  }, []);
+
+  // DRAG & RESIZE CROP BOX LOGIC (with requestAnimationFrame throttling)
   const handleMouseDown = (e, action) => {
     e.preventDefault();
     e.stopPropagation();
@@ -457,29 +905,41 @@ export default function App() {
     y = Math.floor(y / 2) * 2;
 
     const newCrop = { x, y, width, height };
-    setCrop(newCrop);
     ds.lastCrop = newCrop;
 
     if (currentVideoRef.current) {
       currentVideoRef.current.crop = newCrop;
     }
+
+    if (!rafIdRef.current) {
+      rafIdRef.current = requestAnimationFrame(() => {
+        setCrop(newCrop);
+        rafIdRef.current = null;
+      });
+    }
   }, []);
 
   const handleMouseUp = useCallback(() => {
+    if (rafIdRef.current) {
+      cancelAnimationFrame(rafIdRef.current);
+      rafIdRef.current = null;
+    }
     const lastCrop = dragStateRef.current?.lastCrop;
     dragStateRef.current = null;
     window.removeEventListener('mousemove', handleMouseMove);
     window.removeEventListener('mouseup', handleMouseUp);
 
     if (lastCrop) {
+      setCrop(lastCrop);
+      const idx = selectedIndexRef.current;
       setVideos(prev => {
-        if (!prev[selectedIndex]) return prev;
+        if (!prev[idx]) return prev;
         const updated = [...prev];
-        updated[selectedIndex] = { ...updated[selectedIndex], crop: lastCrop };
+        updated[idx] = { ...updated[idx], crop: lastCrop };
         return updated;
       });
     }
-  }, [handleMouseMove, selectedIndex]);
+  }, [handleMouseMove]);
 
   useEffect(() => {
     return () => {
@@ -492,10 +952,14 @@ export default function App() {
     const val = parseInt(value, 10) || 0;
     const newCrop = { ...crop, [field]: val };
     setCrop(newCrop);
+    if (currentVideoRef.current) {
+      currentVideoRef.current.crop = newCrop;
+    }
+    const idx = selectedIndexRef.current;
     setVideos(prev => {
-      if (!prev[selectedIndex]) return prev;
+      if (!prev[idx]) return prev;
       const updated = [...prev];
-      updated[selectedIndex] = { ...updated[selectedIndex], crop: newCrop };
+      updated[idx] = { ...updated[idx], crop: newCrop };
       return updated;
     });
   };
@@ -503,10 +967,14 @@ export default function App() {
   const handleResetCrop = () => {
     const fullCrop = { x: 0, y: 0, width: videoDims.width, height: videoDims.height };
     setCrop(fullCrop);
+    if (currentVideoRef.current) {
+      currentVideoRef.current.crop = fullCrop;
+    }
+    const idx = selectedIndexRef.current;
     setVideos(prev => {
-      if (!prev[selectedIndex]) return prev;
+      if (!prev[idx]) return prev;
       const updated = [...prev];
-      updated[selectedIndex] = { ...updated[selectedIndex], crop: fullCrop };
+      updated[idx] = { ...updated[idx], crop: fullCrop };
       return updated;
     });
   };
@@ -613,19 +1081,18 @@ export default function App() {
     showToast('Todos os vídeos resetados para tela cheia.');
   };
 
-  const handleClearList = () => {
-    setVideos([]);
-    setSelectedIndex(0);
-    clearVideosFromDB();
-    showToast('Lista de vídeos limpa.');
-  };
-
-  // Auto-detect black bars on current frame
+  // Auto-detect black bars on current frame (downscaled for speed and responsiveness)
   const handleAutoDetect = () => {
     if (!videoRef.current) return;
     const v = videoRef.current;
-    const w = v.videoWidth || videoDims.width;
-    const h = v.videoHeight || videoDims.height;
+    const realW = v.videoWidth || videoDims.width;
+    const realH = v.videoHeight || videoDims.height;
+    if (!realW || !realH) return;
+
+    // Use downscaled canvas (max 960x540) to execute in <2ms without freezing UI
+    const scale = Math.min(1, 960 / realW, 540 / realH);
+    const w = Math.round(realW * scale);
+    const h = Math.round(realH * scale);
 
     const canvas = document.createElement('canvas');
     canvas.width = w;
@@ -637,7 +1104,7 @@ export default function App() {
     const data = imgData.data;
 
     const isRowBlack = (row) => {
-      for (let col = 0; col < w; col += 6) {
+      for (let col = 0; col < w; col += 4) {
         const idx = (row * w + col) * 4;
         if (data[idx] > 22 || data[idx + 1] > 22 || data[idx + 2] > 22) return false;
       }
@@ -645,7 +1112,7 @@ export default function App() {
     };
 
     const isColBlack = (col) => {
-      for (let row = 0; row < h; row += 6) {
+      for (let row = 0; row < h; row += 4) {
         const idx = (row * w + col) * 4;
         if (data[idx] > 22 || data[idx + 1] > 22 || data[idx + 2] > 22) return false;
       }
@@ -662,20 +1129,26 @@ export default function App() {
     while (left < w / 2 && isColBlack(left)) left++;
     while (right > w / 2 && isColBlack(right)) right--;
 
-    const detectedW = Math.floor(Math.max(100, right - left + 1) / 2) * 2;
-    const detectedH = Math.floor(Math.max(100, bottom - top + 1) / 2) * 2;
+    const scaleX = realW / w;
+    const scaleY = realH / h;
 
-    const newCrop = { x: left, y: top, width: detectedW, height: detectedH };
+    const detectedX = Math.floor(Math.round(left * scaleX) / 2) * 2;
+    const detectedY = Math.floor(Math.round(top * scaleY) / 2) * 2;
+    const detectedW = Math.floor(Math.max(100, Math.round((right - left + 1) * scaleX)) / 2) * 2;
+    const detectedH = Math.floor(Math.max(100, Math.round((bottom - top + 1) * scaleY)) / 2) * 2;
+
+    const newCrop = { x: detectedX, y: detectedY, width: detectedW, height: detectedH };
     setCrop(newCrop);
 
+    const idx = selectedIndexRef.current;
     setVideos(prev => {
-      if (!prev[selectedIndex]) return prev;
+      if (!prev[idx]) return prev;
       const updated = [...prev];
-      updated[selectedIndex] = { ...updated[selectedIndex], crop: newCrop };
+      updated[idx] = { ...updated[idx], crop: newCrop };
       return updated;
     });
 
-    showToast(`Bordas detectadas: ${detectedW}x${detectedH} (X:${left}, Y:${top})`);
+    showToast(`Bordas detectadas: ${detectedW}x${detectedH} (X:${detectedX}, Y:${detectedY})`);
   };
 
   // Process / Crop videos
@@ -1269,48 +1742,15 @@ export default function App() {
 
               {/* BARRA DE REPRODUÇÃO E AVANÇO POR BAIXO DO PREVIEW (NÃO POLUI A IMAGEM) */}
               {currentVideo && (
-                <div className="playback-bar-bottom">
-                  <button
-                    type="button"
-                    className="btn-play-pause"
-                    onClick={togglePlay}
-                    title={isPlaying ? 'Pausar' : 'Reproduzir'}
-                  >
-                    {isPlaying ? '❚❚' : '▶'}
-                  </button>
-
-                  <button
-                    type="button"
-                    className="btn-step"
-                    onClick={() => handleStep(-5)}
-                    title="Voltar 5 segundos"
-                  >
-                    -5s
-                  </button>
-
-                  <button
-                    type="button"
-                    className="btn-step"
-                    onClick={() => handleStep(5)}
-                    title="Avançar 5 segundos"
-                  >
-                    +5s
-                  </button>
-
-                  <input
-                    type="range"
-                    className="timeline-slider"
-                    min={0}
-                    max={duration || 100}
-                    step={0.1}
-                    value={currentTime}
-                    onChange={handleSeek}
-                  />
-
-                  <span className="time-display">
-                    {formatTime(currentTime)} / {formatTime(duration)}
-                  </span>
-                </div>
+                <PlaybackBar
+                  isPlaying={isPlaying}
+                  currentTime={currentTime}
+                  duration={duration}
+                  togglePlay={togglePlay}
+                  handleStep={handleStep}
+                  handleSeek={handleSeek}
+                  formatTime={formatTime}
+                />
               )}
 
               {/* Coordinates Inputs */}
@@ -1488,95 +1928,17 @@ export default function App() {
             {/* End Left Column (player-column) */}
           </div>
 
-            {/* Right: Video List */}
-            <div className="queue-card">
-              <div className="queue-header">
-                <span className="queue-title">
-                  Vídeos ({videos.length})
-                </span>
-                {videos.length > 0 && (
-                  <button
-                    className="btn btn-secondary btn-sm"
-                    onClick={handleClearList}
-                  >
-                    Limpar Lista
-                  </button>
-                )}
-              </div>
-
-              {videos.length > 0 && (
-                <div style={{ display: 'flex', gap: '6px', margin: '8px 0 12px 0', flexWrap: 'wrap' }}>
-                  <button
-                    type="button"
-                    className={`btn btn-xs ${videoFilter === 'all' ? 'btn-primary' : 'btn-secondary'}`}
-                    onClick={() => setVideoFilter('all')}
-                  >
-                    Todos ({videos.length})
-                  </button>
-                  <button
-                    type="button"
-                    className={`btn btn-xs ${videoFilter === 'pending' ? 'btn-primary' : 'btn-secondary'}`}
-                    onClick={() => setVideoFilter('pending')}
-                  >
-                    Pendentes ({videos.filter(v => getVideoServerStatus(v).status !== 'completed').length})
-                  </button>
-                  <button
-                    type="button"
-                    className={`btn btn-xs ${videoFilter === 'completed' ? 'btn-primary' : 'btn-secondary'}`}
-                    onClick={() => setVideoFilter('completed')}
-                  >
-                    ✓ Concluídos ({videos.filter(v => getVideoServerStatus(v).status === 'completed').length})
-                  </button>
-                </div>
-              )}
-
-              {videos.length === 0 ? (
-                <div className="empty-queue">
-                  Nenhum vídeo adicionado ainda.<br />
-                  Clique em <strong>📁 Selecionar Pasta</strong> ou arraste um vídeo para cá.
-                </div>
-              ) : (
-                <ul className="queue-list">
-                  {videos
-                    .map((v, originalIndex) => ({ v, originalIndex, statusInfo: getVideoServerStatus(v) }))
-                    .filter(({ statusInfo }) => {
-                      if (videoFilter === 'completed') return statusInfo.status === 'completed';
-                      if (videoFilter === 'pending') return statusInfo.status !== 'completed';
-                      return true;
-                    })
-                    .map(({ v, originalIndex, statusInfo }) => (
-                      <li
-                        key={v.id || originalIndex}
-                        className={`queue-item ${originalIndex === selectedIndex ? 'active' : ''}`}
-                        onClick={() => setSelectedIndex(originalIndex)}
-                      >
-                        <div className="queue-item-info">
-                          <span className="queue-item-name">{v.name}</span>
-                          <span className="queue-item-meta">
-                            {v.crop ? (
-                              <>
-                                Corte: {v.crop.width}x{v.crop.height}
-                                {v.crop.bottomCut ? ` (-${v.crop.bottomCut}px base)` : ''}
-                              </>
-                            ) : 'Sem corte definido'}
-                          </span>
-                        </div>
-
-                        <div className="queue-item-actions">
-                          <span className={statusInfo.className}>{statusInfo.label}</span>
-                          <button
-                            className="btn btn-danger btn-sm"
-                            onClick={(e) => handleRemove(originalIndex, e)}
-                            title="Remover vídeo"
-                          >
-                            ✕
-                          </button>
-                        </div>
-                      </li>
-                    ))}
-                </ul>
-              )}
-            </div>
+            {/* Right: Video List (Memoized component) */}
+            <VideoQueueList
+              videos={videos}
+              selectedIndex={selectedIndex}
+              videoFilter={videoFilter}
+              setVideoFilter={setVideoFilter}
+              serverStatusMap={serverStatusMap}
+              onSelectIndex={setSelectedIndex}
+              onRemoveVideo={handleRemove}
+              onClearList={handleClearList}
+            />
           </div>
         </>
       )}
