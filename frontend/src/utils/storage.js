@@ -46,11 +46,12 @@ export async function saveVideosToDB(videos) {
       if (!v || v.id == null) continue;
       activeIds.add(v.id);
 
-      // Lightweight metadata only (~150 bytes per item vs 2GB binary file)
+      // Save item metadata and preserve File reference if supported by browser/IndexedDB
       const item = {
         id: v.id,
         name: v.name || '',
         path: v.path || v.name || '',
+        file: v.file || null,
         status: v.status || 'Pendente',
         crop: v.crop || null,
         width: v.width || null,
@@ -58,7 +59,12 @@ export async function saveVideosToDB(videos) {
         order: i
       };
 
-      store.put(item);
+      try {
+        store.put(item);
+      } catch {
+        // Fallback without binary file if browser restricts file handle serialization
+        store.put({ ...item, file: null });
+      }
     }
 
     // Remove deleted keys without needing a disruptive store.clear()

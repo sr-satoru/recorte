@@ -478,21 +478,18 @@ export default function App() {
   videosRef.current = videos;
   const rafIdRef = useRef(null);
 
-  // When a video is selected, update player source only if video changed
+  // When a video is selected, safely release previous media pipeline and sync state
   useEffect(() => {
     if (!currentVideo) {
       activeVideoIdRef.current = null;
       return;
     }
 
-    if (currentVideo.blobUrl && videoRef.current && activeVideoIdRef.current !== currentVideo.id) {
-      activeVideoIdRef.current = currentVideo.id;
-      // Pause first to safely detach previous stream in WebKit/WebView decoder
-      videoRef.current.pause();
-      videoRef.current.src = currentVideo.blobUrl;
-      videoRef.current.load();
-      setIsPlaying(false);
-      setCurrentTime(0);
+    activeVideoIdRef.current = currentVideo.id;
+
+    // Immediately sync known dimensions and crop to prevent layout shifts and flickering
+    if (currentVideo.width && currentVideo.height) {
+      setVideoDims({ width: currentVideo.width, height: currentVideo.height });
     }
 
     if (currentVideo.crop) {
@@ -501,11 +498,28 @@ export default function App() {
       setCrop({
         x: 0,
         y: 0,
-        width: currentVideo.width || videoDims.width || 1920,
-        height: currentVideo.height || videoDims.height || 1080
+        width: currentVideo.width || 1920,
+        height: currentVideo.height || 1080
       });
     }
-  }, [selectedIndex, currentVideo?.id, currentVideo?.blobUrl]);
+
+    setIsPlaying(false);
+    setCurrentTime(0);
+    setDuration(0);
+
+    // Teardown cleanup: detach and flush previous media pipeline in WebKitGTK / GStreamer to prevent thread locks
+    return () => {
+      if (videoRef.current) {
+        try {
+          videoRef.current.pause();
+          videoRef.current.removeAttribute('src');
+          videoRef.current.load();
+        } catch {
+          // ignore teardown errors on unmount
+        }
+      }
+    };
+  }, [currentVideo?.id]);
 
   // Video metadata loaded
   const onLoadedMetadata = () => {
@@ -567,10 +581,14 @@ export default function App() {
 
   // Seek / Step forward or backward
   const handleStep = (secs) => {
-    if (!videoRef.current) return;
-    const newTime = Math.max(0, Math.min(videoRef.current.duration || 0, videoRef.current.currentTime + secs));
-    videoRef.current.currentTime = newTime;
-    setCurrentTime(newTime);
+    if (!videoRef.current || videoRef.current.readyState < 1) return;
+    try {
+      const newTime = Math.max(0, Math.min(videoRef.current.duration || 0, videoRef.current.currentTime + secs));
+      videoRef.current.currentTime = newTime;
+      setCurrentTime(newTime);
+    } catch {
+      // ignore
+    }
   };
 
   // Throttled seek to prevent flooding the video decoder pipeline while dragging the slider
@@ -583,8 +601,12 @@ export default function App() {
       cancelAnimationFrame(seekRafRef.current);
     }
     seekRafRef.current = requestAnimationFrame(() => {
-      if (videoRef.current) {
-        videoRef.current.currentTime = newTime;
+      if (videoRef.current && videoRef.current.readyState >= 1) {
+        try {
+          videoRef.current.currentTime = newTime;
+        } catch {
+          // ignore
+        }
       }
       seekRafRef.current = null;
     });
@@ -1509,16 +1531,25 @@ export default function App() {
               >
                 {currentVideo ? (
                   <>
-                    <video
-                      ref={videoRef}
-                      className="video-element"
-                      onLoadedMetadata={onLoadedMetadata}
-                      onTimeUpdate={onTimeUpdate}
-                      onEnded={() => setIsPlaying(false)}
-                      onError={onVideoError}
-                      playsInline
-                      preload="metadata"
-                    />
+                    {currentVideo.blobUrl ? (
+                      <video
+                        key={currentVideo.id}
+                        ref={videoRef}
+                        src={currentVideo.blobUrl}
+                        className="video-element"
+                        onLoadedMetadata={onLoadedMetadata}
+                        onTimeUpdate={onTimeUpdate}
+                        onEnded={() => setIsPlaying(false)}
+                        onError={onVideoError}
+                        playsInline
+                        preload="metadata"
+                      />
+                    ) : (
+                      <div className="empty-player-text">
+                        ⚠️ Arquivo de sessão anterior sem link direto.<br />
+                        Arraste o vídeo ou selecione o arquivo novamente para pré-visualizar.
+                      </div>
+                    )}
 
                     {/* Shaded borders indicating black bars to be cut */}
                     <div
