@@ -537,11 +537,28 @@ export default function App() {
     }
   };
 
+  const seekRafRef = useRef(null);
+
+  // Video error handler
+  const onVideoError = () => {
+    setIsPlaying(false);
+    console.warn('Erro na reprodução do elemento de vídeo.');
+  };
+
   // Play / Pause toggle
   const togglePlay = () => {
     if (!videoRef.current) return;
-    if (videoRef.current.paused) {
-      videoRef.current.play().then(() => setIsPlaying(true)).catch(() => { });
+    if (videoRef.current.paused || videoRef.current.ended) {
+      if (videoRef.current.ended) {
+        videoRef.current.currentTime = 0;
+      }
+      videoRef.current.play()
+        .then(() => setIsPlaying(true))
+        .catch((err) => {
+          console.warn('Playback error:', err);
+          setIsPlaying(false);
+          showToast('Não foi possível reproduzir este formato de vídeo no player interno.');
+        });
     } else {
       videoRef.current.pause();
       setIsPlaying(false);
@@ -556,11 +573,21 @@ export default function App() {
     setCurrentTime(newTime);
   };
 
+  // Throttled seek to prevent flooding the video decoder pipeline while dragging the slider
   const handleSeek = (e) => {
     if (!videoRef.current) return;
     const newTime = parseFloat(e.target.value);
-    videoRef.current.currentTime = newTime;
     setCurrentTime(newTime);
+
+    if (seekRafRef.current) {
+      cancelAnimationFrame(seekRafRef.current);
+    }
+    seekRafRef.current = requestAnimationFrame(() => {
+      if (videoRef.current) {
+        videoRef.current.currentTime = newTime;
+      }
+      seekRafRef.current = null;
+    });
   };
 
   // Select folder (reads all videos inside)
@@ -1488,7 +1515,9 @@ export default function App() {
                       onLoadedMetadata={onLoadedMetadata}
                       onTimeUpdate={onTimeUpdate}
                       onEnded={() => setIsPlaying(false)}
+                      onError={onVideoError}
                       playsInline
+                      preload="metadata"
                     />
 
                     {/* Shaded borders indicating black bars to be cut */}
