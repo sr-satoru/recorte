@@ -266,6 +266,8 @@
   cursor: move;
   user-select: none;
   z-index: 10;
+  will-change: top, left, width, height;
+  transform: translateZ(0);
 }
 
 .crop-hud-tag {
@@ -365,6 +367,9 @@
   position: absolute;
   background: rgba(0, 0, 0, 0.7);
   pointer-events: none;
+  z-index: 5;
+  will-change: top, left, width, height;
+  transform: translateZ(0);
 }
 
 .empty-player-text {
