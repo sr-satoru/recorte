@@ -1,4 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { MediaPlayer, MediaProvider } from '@vidstack/react';
+import '@vidstack/react/player/styles/base.css';
 import { saveVideosToDB, loadVideosFromDB, clearVideosFromDB } from './utils/storage.js';
 import './App.css';
 
@@ -234,7 +236,7 @@ export default function App() {
     sides: 0
   });
 
-  const videoRef = useRef(null);
+  const playerRef = useRef(null);
   const containerRef = useRef(null);
   const folderInputRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -478,7 +480,7 @@ export default function App() {
   videosRef.current = videos;
   const rafIdRef = useRef(null);
 
-  // When a video is selected, safely release previous media pipeline and sync state
+  // When a video is selected, sync dimensions and crop state
   useEffect(() => {
     if (!currentVideo) {
       activeVideoIdRef.current = null;
@@ -506,28 +508,16 @@ export default function App() {
     setIsPlaying(false);
     setCurrentTime(0);
     setDuration(0);
-
-    // Teardown cleanup: detach and flush previous media pipeline in WebKitGTK / GStreamer to prevent thread locks
-    return () => {
-      if (videoRef.current) {
-        try {
-          videoRef.current.pause();
-          videoRef.current.removeAttribute('src');
-          videoRef.current.load();
-        } catch {
-          // ignore teardown errors on unmount
-        }
-      }
-    };
   }, [currentVideo?.id]);
 
-  // Video metadata loaded
-  const onLoadedMetadata = () => {
-    if (!videoRef.current) return;
-    const w = videoRef.current.videoWidth || 1920;
-    const h = videoRef.current.videoHeight || 1080;
+  // Video metadata loaded from Vidstack Player
+  const onLoadedMetadata = (e) => {
+    const videoEl = e?.target || playerRef.current?.el?.querySelector('video') || playerRef.current?.provider?.video;
+    const w = videoEl?.videoWidth || 1920;
+    const h = videoEl?.videoHeight || 1080;
+    const dur = playerRef.current?.duration || videoEl?.duration || 0;
     setVideoDims({ width: w, height: h });
-    setDuration(videoRef.current.duration || 0);
+    setDuration(dur);
     setCurrentTime(0);
     setIsPlaying(false);
 
@@ -545,9 +535,11 @@ export default function App() {
     });
   };
 
-  const onTimeUpdate = () => {
-    if (videoRef.current) {
-      setCurrentTime(videoRef.current.currentTime);
+  const onTimeUpdate = (detail) => {
+    if (detail && typeof detail.currentTime === 'number') {
+      setCurrentTime(detail.currentTime);
+    } else if (playerRef.current) {
+      setCurrentTime(playerRef.current.currentTime || 0);
     }
   };
 
@@ -561,12 +553,9 @@ export default function App() {
 
   // Play / Pause toggle
   const togglePlay = () => {
-    if (!videoRef.current) return;
-    if (videoRef.current.paused || videoRef.current.ended) {
-      if (videoRef.current.ended) {
-        videoRef.current.currentTime = 0;
-      }
-      videoRef.current.play()
+    if (!playerRef.current) return;
+    if (playerRef.current.paused) {
+      playerRef.current.play()
         .then(() => setIsPlaying(true))
         .catch((err) => {
           console.warn('Playback error:', err);
@@ -574,17 +563,19 @@ export default function App() {
           showToast('Não foi possível reproduzir este formato de vídeo no player interno.');
         });
     } else {
-      videoRef.current.pause();
+      playerRef.current.pause();
       setIsPlaying(false);
     }
   };
 
   // Seek / Step forward or backward
   const handleStep = (secs) => {
-    if (!videoRef.current || videoRef.current.readyState < 1) return;
+    if (!playerRef.current) return;
     try {
-      const newTime = Math.max(0, Math.min(videoRef.current.duration || 0, videoRef.current.currentTime + secs));
-      videoRef.current.currentTime = newTime;
+      const dur = playerRef.current.duration || duration || 0;
+      const cur = playerRef.current.currentTime || 0;
+      const newTime = Math.max(0, Math.min(dur, cur + secs));
+      playerRef.current.currentTime = newTime;
       setCurrentTime(newTime);
     } catch {
       // ignore
@@ -593,7 +584,7 @@ export default function App() {
 
   // Throttled seek to prevent flooding the video decoder pipeline while dragging the slider
   const handleSeek = (e) => {
-    if (!videoRef.current) return;
+    if (!playerRef.current) return;
     const newTime = parseFloat(e.target.value);
     setCurrentTime(newTime);
 
@@ -601,9 +592,9 @@ export default function App() {
       cancelAnimationFrame(seekRafRef.current);
     }
     seekRafRef.current = requestAnimationFrame(() => {
-      if (videoRef.current && videoRef.current.readyState >= 1) {
+      if (playerRef.current) {
         try {
-          videoRef.current.currentTime = newTime;
+          playerRef.current.currentTime = newTime;
         } catch {
           // ignore
         }
@@ -951,8 +942,8 @@ export default function App() {
 
   // Auto-detect black bars on current frame (downscaled for speed and responsiveness)
   const handleAutoDetect = () => {
-    if (!videoRef.current) return;
-    const v = videoRef.current;
+    const v = playerRef.current?.el?.querySelector('video') || playerRef.current?.provider?.video;
+    if (!v) return;
     const realW = v.videoWidth || videoDims.width;
     const realH = v.videoHeight || videoDims.height;
     if (!realW || !realH) return;
@@ -1532,18 +1523,21 @@ export default function App() {
                 {currentVideo ? (
                   <>
                     {currentVideo.blobUrl ? (
-                      <video
-                        key={currentVideo.id}
-                        ref={videoRef}
+                      <MediaPlayer
+                        ref={playerRef}
                         src={currentVideo.blobUrl}
-                        className="video-element"
+                        className="vidstack-player"
                         onLoadedMetadata={onLoadedMetadata}
                         onTimeUpdate={onTimeUpdate}
+                        onPlay={() => setIsPlaying(true)}
+                        onPause={() => setIsPlaying(false)}
                         onEnded={() => setIsPlaying(false)}
                         onError={onVideoError}
                         playsInline
                         preload="metadata"
-                      />
+                      >
+                        <MediaProvider />
+                      </MediaPlayer>
                     ) : (
                       <div className="empty-player-text">
                         ⚠️ Arquivo de sessão anterior sem link direto.<br />

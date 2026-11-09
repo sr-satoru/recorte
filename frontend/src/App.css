@@ -252,10 +252,25 @@
   justify-content: center;
 }
 
-.video-element {
+.video-element,
+.vidstack-player {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  background: #000000;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.vidstack-player media-provider,
+.vidstack-player video {
   width: 100%;
   height: 100%;
   object-fit: contain;
+  display: block;
 }
 
 /* Overlay de Corte com Arrastar e Redimensionar */
