@@ -73,6 +73,7 @@ export default function App() {
   const [newFolderName, setNewFolderName] = useState('');
   const [showNewFolderInput, setShowNewFolderInput] = useState(false);
   const [folderSearchQuery, setFolderSearchQuery] = useState('');
+  const [folderModalMode, setFolderModalMode] = useState('output'); // 'output' or 'import'
 
   const showToast = (msg) => {
     setToastMessage(msg);
@@ -259,24 +260,8 @@ export default function App() {
       return;
     }
 
-    if (!currentVideo.blobUrl) {
-      console.warn('⚠️ Vídeo sem blobUrl ativo:', currentVideo.name);
-      showToast(`⚠️ Vídeo "${currentVideo.name}" sem arquivo em memória.`);
-      return;
-    }
-
-    if (videoRef.current && activeVideoIdRef.current !== currentVideo.id) {
-      activeVideoIdRef.current = currentVideo.id;
-      try {
-        videoRef.current.pause();
-      } catch {
-        // ignore
-      }
-      videoRef.current.src = currentVideo.blobUrl;
-      videoRef.current.load();
-      setIsPlaying(false);
-      setCurrentTime(0);
-    }
+    const vw = currentVideo.width || videoDims.width || 1920;
+    const vh = currentVideo.height || videoDims.height || 1080;
 
     if (currentVideo.width && currentVideo.height) {
       setVideoDims({ width: currentVideo.width, height: currentVideo.height });
@@ -288,9 +273,22 @@ export default function App() {
       setCrop({
         x: 0,
         y: 0,
-        width: currentVideo.width || 1920,
-        height: currentVideo.height || 1080
+        width: vw,
+        height: vh
       });
+    }
+
+    if (currentVideo.blobUrl && videoRef.current && activeVideoIdRef.current !== currentVideo.id) {
+      activeVideoIdRef.current = currentVideo.id;
+      try {
+        videoRef.current.pause();
+      } catch {
+        // ignore
+      }
+      videoRef.current.src = currentVideo.blobUrl;
+      videoRef.current.load();
+      setIsPlaying(false);
+      setCurrentTime(0);
     }
   }, [selectedIndex, currentVideo?.id, currentVideo?.blobUrl]);
 
@@ -799,7 +797,8 @@ export default function App() {
     }
   };
 
-  const handleOpenFolderModal = () => {
+  const handleOpenFolderModal = (mode = 'output') => {
+    setFolderModalMode(mode);
     setShowFolderModal(true);
     setShowNewFolderInput(false);
     setNewFolderName('');
@@ -807,9 +806,44 @@ export default function App() {
     loadDirectory(outputFolder || '');
   };
 
-  const handleSelectCurrentFolder = (chosenPath) => {
+  const handleSelectCurrentFolder = async (chosenPath) => {
     const p = chosenPath || browseData.current;
-    if (p) {
+    if (!p) return;
+
+    if (folderModalMode === 'import') {
+      showToast('Escaneando pasta em busca de vídeos...');
+      try {
+        const res = await fetch(`${API_BASE}/api/1/folder/scan`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ folderPath: p })
+        });
+        const data = await res.json();
+        if (data.success && data.files && data.files.length > 0) {
+          const newItems = data.files.map((filePath, i) => {
+            const fileName = filePath.split(/[/\\]/).pop() || filePath;
+            return {
+              id: Date.now() + i,
+              name: fileName,
+              path: filePath,
+              file: null,
+              blobUrl: null,
+              status: 'Pendente',
+              crop: null
+            };
+          });
+          setVideos(prev => [...prev, ...newItems]);
+          setSelectedIndex(videos.length);
+          setShowFolderModal(false);
+          showToast(`${newItems.length} vídeo(s) carregado(s) da pasta!`);
+        } else {
+          showToast('Nenhum vídeo encontrado nesta pasta.');
+        }
+      } catch (err) {
+        console.error('Erro ao escanear pasta:', err);
+        showToast('Erro ao escanear pasta no servidor.');
+      }
+    } else {
       setOutputFolder(p);
       setShowFolderModal(false);
       showToast(`Pasta de saída definida: ${p}`);
@@ -876,10 +910,13 @@ export default function App() {
   };
 
   // Calculate overlay percentages
-  const leftPct = (crop.x / (videoDims.width || 1)) * 100;
-  const topPct = (crop.y / (videoDims.height || 1)) * 100;
-  const widthPct = (crop.width / (videoDims.width || 1)) * 100;
-  const heightPct = (crop.height / (videoDims.height || 1)) * 100;
+  const safeW = (videoDims.width && videoDims.width > 0) ? videoDims.width : (crop.width || 1920);
+  const safeH = (videoDims.height && videoDims.height > 0) ? videoDims.height : (crop.height || 1080);
+
+  const leftPct = Math.max(0, Math.min(100, ((crop.x || 0) / safeW) * 100));
+  const topPct = Math.max(0, Math.min(100, ((crop.y || 0) / safeH) * 100));
+  const widthPct = Math.max(1, Math.min(100 - leftPct, ((crop.width || safeW) / safeW) * 100));
+  const heightPct = Math.max(1, Math.min(100 - topPct, ((crop.height || safeH) / safeH) * 100));
 
   return (
     <div className="app">
@@ -1147,7 +1184,13 @@ export default function App() {
             <div className="tool-group">
               <button
                 className="btn btn-secondary"
-                onClick={() => folderInputRef.current?.click()}
+                onClick={() => {
+                  if (backendOnline) {
+                    handleOpenFolderModal('import');
+                  } else {
+                    folderInputRef.current?.click();
+                  }
+                }}
               >
                 📁 Selecionar Pasta
               </button>
@@ -1200,7 +1243,7 @@ export default function App() {
                 <button
                   type="button"
                   className="btn btn-secondary"
-                  onClick={handleOpenFolderModal}
+                  onClick={() => handleOpenFolderModal('output')}
                   title="Abrir navegador de pastas no computador"
                 >
                   📁 Selecionar Pasta
@@ -1246,7 +1289,7 @@ export default function App() {
               <div
                 ref={containerRef}
                 className={`player-screen ${isDragOver ? 'drag-over' : ''}`}
-                style={{ aspectRatio: `${videoDims.width} / ${videoDims.height}` }}
+                style={{ aspectRatio: `${safeW} / ${safeH}` }}
                 onDragOver={(e) => { e.preventDefault(); setIsDragOver(true); }}
                 onDragLeave={() => setIsDragOver(false)}
                 onDrop={handleFileDrop}
@@ -1653,7 +1696,11 @@ export default function App() {
             <div className="modal-header">
               <div className="modal-title">
                 <span>📁</span>
-                <span>Selecionar Pasta de Saída no Computador</span>
+                <span>
+                  {folderModalMode === 'import'
+                    ? 'Selecionar Pasta de Vídeos para Importar'
+                    : 'Selecionar Pasta de Saída no Computador'}
+                </span>
               </div>
               <button
                 type="button"
@@ -1812,7 +1859,9 @@ export default function App() {
             {/* Footer with confirmation */}
             <div className="modal-footer">
               <div className="modal-footer-selection">
-                <span className="selection-label">Caminho que será anotado no servidor:</span>
+                <span className="selection-label">
+                  {folderModalMode === 'import' ? 'Pasta que será importada:' : 'Pasta de saída:'}
+                </span>
                 <span className="selection-path" title={browseData.current}>
                   {browseData.current || '(Nenhuma pasta selecionada)'}
                 </span>
@@ -1827,11 +1876,11 @@ export default function App() {
                 </button>
                 <button
                   type="button"
-                  className="btn"
+                  className="btn btn-primary"
                   onClick={() => handleSelectCurrentFolder()}
                   disabled={!browseData.current || browseLoading}
                 >
-                  ✓ Usar Esta Pasta
+                  {folderModalMode === 'import' ? '📥 Importar Vídeos desta Pasta' : '✓ Usar Esta Pasta'}
                 </button>
               </div>
             </div>

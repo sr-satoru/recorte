@@ -100,7 +100,7 @@ pub async fn crop_video(
     progress_target: Arc<Mutex<Option<ProgressUpdate>>>,
     progress_tx: Option<broadcast::Sender<ProgressUpdate>>,
 ) -> Result<(), String> {
-    let is_in_place = output_file == "in-place";
+    let is_in_place = output_file == "in-place" || Path::new(output_file) == Path::new(input_file);
     let actual_output: PathBuf = if is_in_place {
         let ext = Path::new(input_file)
             .extension()

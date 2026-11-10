@@ -193,6 +193,12 @@ pub fn resolve_video_path(file_path: &str, fallback_folder: Option<&str>) -> Pat
             if c2.exists() {
                 return c2;
             }
+            // Check subdirectories recursively inside fallback_folder
+            for entry in WalkDir::new(fb).max_depth(8).into_iter().flatten() {
+                if entry.file_name() == fname && entry.path().is_file() {
+                    return entry.path().to_path_buf();
+                }
+            }
         }
     }
 
@@ -217,8 +223,8 @@ pub fn resolve_video_path(file_path: &str, fallback_folder: Option<&str>) -> Pat
         }
 
         for root in &common_roots {
-            for entry in WalkDir::new(root).max_depth(3).into_iter().flatten() {
-                if entry.file_name() == fname && entry.path().exists() {
+            for entry in WalkDir::new(root).max_depth(8).into_iter().flatten() {
+                if entry.file_name() == fname && entry.path().is_file() {
                     return entry.path().to_path_buf();
                 }
             }
