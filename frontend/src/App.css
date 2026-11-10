@@ -252,25 +252,10 @@
   justify-content: center;
 }
 
-.video-element,
-.vidstack-player {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  background: #000000;
-  overflow: hidden;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.vidstack-player media-provider,
-.vidstack-player video {
+.video-element {
   width: 100%;
   height: 100%;
   object-fit: contain;
-  display: block;
 }
 
 /* Overlay de Corte com Arrastar e Redimensionar */
@@ -281,8 +266,6 @@
   cursor: move;
   user-select: none;
   z-index: 10;
-  will-change: top, left, width, height;
-  transform: translateZ(0);
 }
 
 .crop-hud-tag {
@@ -382,9 +365,6 @@
   position: absolute;
   background: rgba(0, 0, 0, 0.7);
   pointer-events: none;
-  z-index: 5;
-  will-change: top, left, width, height;
-  transform: translateZ(0);
 }
 
 .empty-player-text {

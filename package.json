@@ -1,6 +1,6 @@
 {
   "name": "star",
-  "version": "1.0.15",
+  "version": "1.0.16",
   "private": true,
   "scripts": {
     "dev:ui": "npm --prefix frontend run dev",

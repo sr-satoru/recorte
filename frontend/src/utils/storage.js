@@ -1,4 +1,4 @@
-// IndexedDB Storage for persisting videos metadata and crop definitions across app restarts
+// IndexedDB Storage for persisting videos and their crop metadata across page refreshes
 
 const DB_NAME = 'star_store';
 const STORE_NAME = 'videos';
@@ -22,55 +22,49 @@ function openDB() {
 }
 
 /**
- * Saves video metadata and crop definitions to IndexedDB.
- * NOTE: Does NOT store heavy raw File/Blob objects to prevent disk I/O freezes
- * and WebKit/WebView crashes when editing crops with multiple large videos.
+ * Saves the current list of videos to IndexedDB.
+ * Preserves the File objects and crop definitions.
  */
 export async function saveVideosToDB(videos) {
-  if (!videos) return;
   try {
     const db = await openDB();
     const tx = db.transaction(STORE_NAME, 'readwrite');
     const store = tx.objectStore(STORE_NAME);
 
-    // Get current keys to cleanly remove any items that were deleted
-    const existingKeys = await new Promise((resolve) => {
-      const req = store.getAllKeys();
-      req.onsuccess = () => resolve(new Set(req.result));
-      req.onerror = () => resolve(new Set());
+    // Clear existing records to keep exact list and ordering
+    await new Promise((resolve, reject) => {
+      const clearReq = store.clear();
+      clearReq.onsuccess = () => resolve();
+      clearReq.onerror = () => reject(clearReq.error);
     });
 
-    const activeIds = new Set();
     for (let i = 0; i < videos.length; i++) {
       const v = videos[i];
-      if (!v || v.id == null) continue;
-      activeIds.add(v.id);
-
-      // Save item metadata and preserve File reference if supported by browser/IndexedDB
-      const item = {
-        id: v.id,
-        name: v.name || '',
-        path: v.path || v.name || '',
-        file: v.file || null,
-        status: v.status || 'Pendente',
-        crop: v.crop || null,
-        width: v.width || null,
-        height: v.height || null,
-        order: i
-      };
-
+      // Try to save full item with File object
       try {
+        const item = {
+          id: v.id,
+          name: v.name,
+          path: v.path,
+          file: v.file || null,
+          status: v.status || 'Pendente',
+          crop: v.crop || null,
+          order: i
+        };
         store.put(item);
-      } catch {
-        // Fallback without binary file if browser restricts file handle serialization
-        store.put({ ...item, file: null });
-      }
-    }
-
-    // Remove deleted keys without needing a disruptive store.clear()
-    for (const oldKey of existingKeys) {
-      if (!activeIds.has(oldKey)) {
-        store.delete(oldKey);
+      } catch (e) {
+        // Fallback without large File object if quota exceeded
+        console.warn('Quota exceeded or file serialisation issue, saving metadata only:', e);
+        const itemFallback = {
+          id: v.id,
+          name: v.name,
+          path: v.path,
+          file: null,
+          status: v.status || 'Pendente',
+          crop: v.crop || null,
+          order: i
+        };
+        store.put(itemFallback);
       }
     }
 
@@ -79,12 +73,12 @@ export async function saveVideosToDB(videos) {
       tx.onerror = () => reject(tx.error);
     });
   } catch (err) {
-    console.warn('Error saving metadata to IndexedDB:', err);
+    console.warn('Error saving to IndexedDB:', err);
   }
 }
 
 /**
- * Loads persisted video metadata from IndexedDB.
+ * Loads persisted videos from IndexedDB and recreates blob URLs.
  */
 export async function loadVideosFromDB() {
   try {
@@ -116,9 +110,7 @@ export async function loadVideosFromDB() {
         file: item.file || null,
         blobUrl,
         status: item.status || 'Pendente',
-        crop: item.crop || null,
-        width: item.width || null,
-        height: item.height || null
+        crop: item.crop || null
       };
     });
   } catch (err) {
