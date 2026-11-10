@@ -259,7 +259,13 @@ export default function App() {
       return;
     }
 
-    if (currentVideo.blobUrl && videoRef.current && activeVideoIdRef.current !== currentVideo.id) {
+    if (!currentVideo.blobUrl) {
+      console.warn('⚠️ Vídeo sem blobUrl ativo:', currentVideo.name);
+      showToast(`⚠️ Vídeo "${currentVideo.name}" sem arquivo em memória.`);
+      return;
+    }
+
+    if (videoRef.current && activeVideoIdRef.current !== currentVideo.id) {
       activeVideoIdRef.current = currentVideo.id;
       try {
         videoRef.current.pause();
@@ -315,6 +321,24 @@ export default function App() {
     if (videoRef.current) {
       setCurrentTime(videoRef.current.currentTime);
     }
+  };
+
+  const onVideoError = () => {
+    const err = videoRef.current?.error;
+    let motivo = 'Erro desconhecido';
+    if (err) {
+      if (err.code === 1) motivo = 'Carregamento cancelado';
+      if (err.code === 2) motivo = 'Falha de rede/leitura';
+      if (err.code === 3) motivo = 'Erro ao decodificar os quadros';
+      if (err.code === 4) motivo = 'Codec interno incompatível com navegador (ex: HEVC/H.265)';
+    }
+    console.error('❌ [Erro de Reprodução do Vídeo]:', {
+      arquivo: currentVideo?.name,
+      blobUrl: currentVideo?.blobUrl,
+      codigo: err?.code,
+      motivo
+    });
+    showToast(`⚠️ "${currentVideo?.name}": ${motivo}`);
   };
 
   // Play / Pause toggle
@@ -1235,6 +1259,7 @@ export default function App() {
                       onLoadedMetadata={onLoadedMetadata}
                       onTimeUpdate={onTimeUpdate}
                       onEnded={() => setIsPlaying(false)}
+                      onError={onVideoError}
                       playsInline
                       preload="metadata"
                     />
